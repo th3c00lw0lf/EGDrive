@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='EGDrive',
-    version='0.1.1',
+    version='0.1.2',
     author='th3c00lw0lf',
     author_email='business.mam@outlook.com',
     packages=['EGDrive'],
