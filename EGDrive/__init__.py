@@ -233,6 +233,9 @@ class EGDrive:
 		dir_name = os.path.dirname(file_path)
 		
 		try:
+			if self.exists(file_path):
+				return self.drive.CreateFile({'id': self.path_to_id(file_path)})
+
 			dir_id = self.path_to_id(dir_name)
 			file = self.drive.CreateFile({'title': file_name, 'parents': [{'id': dir_id}]})
 			file.Upload()
