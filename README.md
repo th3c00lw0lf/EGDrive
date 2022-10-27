@@ -87,11 +87,30 @@ gdrive.rm("/Books/Litterature", permanently=True)
 ```python
 gdrive.download("/Books/Science/physics.pdf", "/home/user/Downloads/physics.pdf")
 ```
-
 ##### Upload a file
 ```python
 gdrive.upload("/home/user/Videos/mrbean.mp4", "/Videos/mrbean.mp4")
 ```
+
+##### Copy a file to a directory
+```python
+gdrive.cp("Books/Science/Programming/gravity.pdf", "/Books/Science/")
+```
+##### Copy a file to a directory and rename it
+```python
+gdrive.cp("/Books/Science/Programming/gravity.pdf", "/Books/Science/physics.pdf")
+```
+
+##### Get the `id` of a file or folder from it's path
+```python
+gdrive.path_to_id("/Books/Science/Programming/gravity.pdf")
+```
+##### Get the path of a file or folder by it's `id`
+```python
+gdrive.id_to_path("XX-XXXXXXXXXXX-XXXXXXX")
+```
+
+
 
 ##### Get access to PyDrive2 [`GoogleDrive`](https://docs.iterative.ai/PyDrive2/pydrive2/#pydrive2.drive.GoogleDrive) and [`GoogleAuth`](https://docs.iterative.ai/PyDrive2/pydrive2/#pydrive2.Auth.GoogleAuth) instances
 ```python
@@ -101,7 +120,7 @@ gdrive.gauth # GoogleAuth instance
 ## 📝 TODO
 
 - Add progress info for uploading/downloading files.
-- Add support for file operations: copy, move.
+- Add support for file operations: ~~copy~~, move.
 - Implement support for relative paths.
 - ...
 

@@ -1,6 +1,6 @@
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
-from pydrive2.files import GoogleDriveFile
+from pydrive2.files import GoogleDriveFile, ApiRequestError
 import logging
 from rich.logging import RichHandler
 import os
@@ -91,6 +91,27 @@ class EGDrive:
 				return file['id']
 		
 		raise FileNotFoundError
+
+	def id_to_title(self, id : str) -> str:
+		"""Retrieves the `title` of the file or folder with id `id` located in `parent_id`
+		
+		Args:
+		    id (str): The title of the file or folder.
+
+		Returns:
+		    str: The title of the file with id `id`
+		
+		Raises:
+		    FileNotFoundError: If the file doesn't exits on GDrive
+		"""
+		try:	
+			file = self.drive.CreateFile({'id': id});
+			file.FetchMetadata()
+		except ApiRequestError:
+			raise FileNotFoundError
+
+		return file['title']
+
 		
 	def path_to_id(self, path : str) -> str:
 		"""Retrieves the `id` of the absolute path `path`
@@ -111,6 +132,47 @@ class EGDrive:
 			id = self.title_to_id(d, id)
 		
 		return id
+
+	def fetch_metadata(self, id : str) -> GoogleDriveFile: 
+		"""Retrieves metadata of the file `id`
+		
+		Args:
+		    id (str): the id of the file you want to get it's metadata
+		
+		Returns:
+		    str: GoogleDrivFile instance of the file with id `id`
+		"""
+
+		gdfile = self.drive.CreateFile({'id': id})
+		gdfile.FetchMetadata()
+		return gdfile
+
+	def id_to_path(self, id : str) -> str:
+		"""Retrieves the absolute path of the file with `id`
+		
+		Args:
+		    id (str): A valid GDrive file ID.
+		
+		Returns:
+		    str: The absolute path of the file with `id`
+		"""
+
+		gdfile = self.fetch_metadata(id)
+		parent = gdfile['parents'][0]
+		path = [gdfile['title']]
+
+
+		is_root = parent['isRoot']
+
+		while not is_root:
+			path = [self.id_to_title(parent['id'])] + path
+			parent = self.fetch_metadata(parent['id'])['parents'][0]
+			is_root = parent['isRoot']
+
+		path = ['/root'] + path
+
+		return '/'.join(path)
+
 
 	def mkdir(self, path : str, parent_id : str = None) -> list:
 		"""Create the `path` directory(ies), if they do not already exist.
@@ -139,7 +201,7 @@ class EGDrive:
 			
 		return gdrive_files
 
-	def ls(self, path : str = None, folder_id : str = None, maxdepth : int = 0, currentdepth : int = 0) -> list:
+	def ls(self, path : str = None, folder_id : str = None, maxdepth : int = 0) -> list:
 		"""List directory contents (the current directory by default).
 		
 		Args:
@@ -152,12 +214,12 @@ class EGDrive:
 		"""
 		assert folder_id != None or path != None
 		
-		if (currentdepth > maxdepth): return []
+		if (0 > maxdepth): return []
 		
 		if folder_id == None:
 			folder_id = self.path_to_id(path)
 			
-		if maxdepth == currentdepth:
+		if maxdepth == 0:
 			return self.drive.ListFile({'q': f"'{folder_id}' in parents and trashed=false"}).GetList()
 		
 		files = self.drive.ListFile({'q': f"'{folder_id}' in parents and trashed=false"}).GetList()
@@ -165,7 +227,7 @@ class EGDrive:
 		
 		for folder in folders_to_scan:
 			logger.info(f"list {folder['title']}")
-			files += self.ls_recursive(folder_id=folder['id'], maxdepth=maxdepth, currentdepth=currentdepth + 1)
+			files += self.ls(folder_id=folder['id'], maxdepth=maxdepth-1)
 		
 		return files
 			
@@ -184,27 +246,33 @@ class EGDrive:
 			else:
 				file.Trash()
 
-	def download(self, remote_path : str, local_path : str) -> GoogleDriveFile:
-		"""Download a file from GDrive
+	def cp(self, src_path: str, dst_path: str) -> GoogleDriveFile:
+		"""Copies file from `src_path` to `dst_path`, can't copy folders yet.
 		
 		Args:
-		    remote_path (str): Remote file path.
-		    local_path (str): Path where to download the desired file.
+		    path (str, optional): Path to list (ignored if folder_id is provided).
+		    folder_id (str, optional): Folder's GDrive ID.
+		    maxdepth (int, optional): Maximum depth to list (default=0).
 		
 		Returns:
-		    GoogleDriveFile: Google Drive File instance of the downloaded file.
+		    list: A list of GoogleDriveFile instantces representing the directory contents. 
 		"""
-		try:
-			file_id = self.path_to_id(remote_path)
-			file = self.drive.CreateFile({'id': file_id})
-			file.GetContentFile(local_path)
-			return file
-			
-		except FileNotFoundError:
-			logger.error(f"remote path `{remote_path}` doesn't exist")
-
-		return None
 		
+		src_gdfile = self.fetch_metadata(self.path_to_id(src_path))
+		dirname = os.path.dirname(dst_path)
+		basename = os.path.basename(dst_path)
+
+		if self.exists(dst_path):
+			target_folder = self.fetch_metadata(self.path_to_id(dst_path))
+			return src_gdfile.Copy(target_folder)
+
+		elif self.exists(dirname):
+			target_folder = self.fetch_metadata(self.path_to_id(dirname))
+			return src_gdfile.Copy(target_folder, basename)
+
+		else:
+			raise FileNotFoundError
+
 	def exists(self, path : str) -> bool:
 		"""Test whether a path exists.
 		
@@ -268,3 +336,24 @@ class EGDrive:
 		file_object.Upload()
 		
 		return file_object
+
+	def download(self, remote_path : str, local_path : str) -> GoogleDriveFile:
+		"""Download a file from GDrive
+		
+		Args:
+		    remote_path (str): Remote file path.
+		    local_path (str): Path where to download the desired file.
+		
+		Returns:
+		    GoogleDriveFile: Google Drive File instance of the downloaded file.
+		"""
+		try:
+			file_id = self.path_to_id(remote_path)
+			file = self.drive.CreateFile({'id': file_id})
+			file.GetContentFile(local_path)
+			return file
+			
+		except FileNotFoundError:
+			logger.error(f"remote path `{remote_path}` doesn't exist")
+
+		return None
